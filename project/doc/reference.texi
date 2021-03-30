@@ -425,8 +425,8 @@ scheduler because the scheduler runs on return from the timer interrupt, using
 @func{intr_yield_on_return} (@pxref{External Interrupt Handling}).
 @end deftypefun
 
-@deftypefun void thread_tick (void)
-Called by the timer interrupt at each timer tick.  It keeps track of
+@deftypefun void thread_tick (int64_t)
+Called by the timer interrupt at each timer tick, providing the current time tick.  It keeps track of
 thread statistics and triggers the scheduler when a time slice expires.
 @end deftypefun
 

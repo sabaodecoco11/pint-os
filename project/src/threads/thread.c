@@ -28,6 +28,10 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* List of all lightweight process (threads) that are sleeping, i.e. waiting.
+* They are put into the list when timer_sleep() is called. */
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -92,12 +96,14 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  initial_thread->ticks_while_blocked = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -120,7 +126,7 @@ thread_start (void)
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
-thread_tick (void) 
+thread_tick (int64_t actual_tick)
 {
   struct thread *t = thread_current ();
 
@@ -133,6 +139,9 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
+
+  //check for wakeups on sleeping threads
+  thread_wake_up(actual_tick);
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -582,3 +591,38 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+/* Puts the thread to sleep while blocking and adding it to a sleep thread queue */
+void
+thread_sleep(int64_t sleep_ticks){
+    struct thread * running_thread = thread_current();
+
+    //saving the amount of sleeping ticks
+    running_thread->ticks_while_blocked = sleep_ticks;
+
+    list_push_back(&sleep_list, &running_thread->sleepingelem);
+
+    //the running thread will be blocked and further scheduled.
+    thread_block();
+}
+
+
+/* Called by the thread tick in order to verify if the any of the sleeping threads are able to wake up*/
+void
+thread_wake_up(int64_t tick){
+    ASSERT(intr_get_level() == INTR_OFF);
+
+    for(struct list_elem *element = list_begin(&sleep_list); element != list_end(&sleep_list); element = list_next(element)){
+        struct thread * sleeping_candidate = list_entry(element, struct thread, sleepingelem);
+
+        /*wake up the sleeping candidate*/
+        if(sleeping_candidate->ticks_while_blocked <= tick){
+            sleeping_candidate->ticks_while_blocked = 0;
+            list_remove(&sleeping_candidate->sleepingelem);
+
+            //don't worry, in the function below, interruptions are disabled and then further enabled,
+            //we still want the O.S to be preemptive
+            thread_unblock(sleeping_candidate);
+        }
+    }
+}

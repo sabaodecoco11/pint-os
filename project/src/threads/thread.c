@@ -210,6 +210,12 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /*the recently created thread has to execute if its priority is higher than
+   * the one thead that's executing*/
+  if(t->priority > thread_get_priority()){
+      thread_yield();
+  }
+
   return tid;
 }
 
@@ -246,7 +252,10 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+
+  //when unblocking this thread, we have to make sure the priority order is kept
+  list_insert_ordered(&ready_list, &t->elem, thread_element_priority_comparator, NULL);
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -316,8 +325,10 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread) {
+      //Making sure the current thread is in the right place when it comes to priority
+      list_insert_ordered(&ready_list, &cur->elem, thread_element_priority_comparator, NULL);
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -344,7 +355,15 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+    thread_current()->priority = new_priority;
+    struct thread * next_ready_thread;
+
+    if(!list_empty(&ready_list)){
+        next_ready_thread = list_entry(list_begin(&ready_list), struct thread, elem);
+        if(next_ready_thread && (next_ready_thread->priority > new_priority)){
+            thread_yield();
+        }
+    }
 }
 
 /* Returns the current thread's priority. */
@@ -471,6 +490,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->old_priority = priority;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
@@ -626,3 +646,42 @@ thread_wake_up(int64_t tick){
         }
     }
 }
+
+
+/* Returns the thread element with greater priority, by default. If less than or greater is needed,
+ * provide '<' as aux.
+ */
+
+bool
+thread_element_priority_comparator(const struct list_elem *e1, const struct list_elem *e2, void * aux){
+    const char * order = (const char *) aux;
+
+    const struct thread * element_1 = list_entry(e1, struct thread, elem);
+    const struct thread * element_2 = list_entry(e2, struct thread, elem);
+
+    ASSERT (element_1 != NULL && element_2 != NULL);
+
+    return (order != NULL && *order == '<') ?
+           element_1->priority <= element_2->priority :
+           element_1->priority > element_2->priority;
+}
+
+/* Change priority and backup the original priority*/
+void
+thread_set_priority_and_backup(int new_priority){
+    struct thread * current_thread = thread_current();
+    ASSERT (new_priority >= PRI_MIN && new_priority <= PRI_MAX);
+
+    current_thread->old_priority = current_thread->priority;
+    current_thread->priority = new_priority;
+}
+
+/* Restore original priority */
+void
+thread_restore_priority(void){
+    struct thread * current_thread = thread_current();
+
+    current_thread->priority = current_thread->old_priority;
+}
+
+

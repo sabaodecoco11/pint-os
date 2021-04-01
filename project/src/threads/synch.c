@@ -68,7 +68,12 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      //inserts the current thread ordered by descending priority by default.
+      list_insert_ordered(&sema->waiters,
+                          &thread_current()->elem,
+                          thread_element_priority_comparator,
+                          NULL);
+
       thread_block ();
     }
   sema->value--;
@@ -113,10 +118,14 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
+
+  sema->value++;
+
+  if (!list_empty(&sema->waiters))
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
-  sema->value++;
+
+  //restore interruption
   intr_set_level (old_level);
 }
 
@@ -196,8 +205,26 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  struct thread * thread_holder = lock->holder;
+  struct thread * current_thread = thread_current();
+
+  /*if the current thread priority is greater than the thread priority that
+   * locked the semaphore, give it the same priority*/
+  if(thread_holder && (current_thread->priority > thread_holder->priority)){
+      thread_holder->old_priority = thread_holder->priority;
+      thread_holder->priority = current_thread->priority;
+  }
+
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+}
+
+void
+priority_donate(struct lock *lock){
+    struct thread * holder = lock->holder;
+    struct semaphore semaphore = lock->semaphore;
+
+    struct list waiters = semaphore.waiters;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -233,6 +260,9 @@ lock_release (struct lock *lock)
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
+  //once releasing the lock, restore the thread priority.
+  thread_restore_priority();
 }
 
 /* Returns true if the current thread holds LOCK, false

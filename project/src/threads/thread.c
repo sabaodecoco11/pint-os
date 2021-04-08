@@ -239,10 +239,10 @@ thread_block (void)
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
 
-   This function does not preempt the running thread.  This can
-   be important: if the caller had disabled interrupts itself,
-   it may expect that it can atomically unblock a thread and
-   update other data. */
+
+   This function preempts the running thread, if the thread to
+   be unblocked has higher priority.
+*/
 void
 thread_unblock (struct thread *t) 
 {
@@ -257,6 +257,11 @@ thread_unblock (struct thread *t)
   list_insert_ordered(&ready_list, &t->elem, thread_element_priority_comparator, NULL);
 
   t->status = THREAD_READY;
+
+  //if the unblocked thread has a higher priority, it has to execute!
+  if(thread_current() != idle_thread && t->priority > thread_current()->priority)
+      thread_yield();
+
   intr_set_level (old_level);
 }
 

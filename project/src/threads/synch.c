@@ -121,6 +121,8 @@ sema_up (struct semaphore *sema)
 
   sema->value++;
 
+ /*unblocks the thread with highest priority. If its priority is greater than the thread running,
+  * it will take execution.*/
   if (!list_empty(&sema->waiters))
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));

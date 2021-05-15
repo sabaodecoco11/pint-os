@@ -96,6 +96,8 @@ struct thread
 
     struct list_elem sleepingelem;      /*List of sleeping elements*/
 
+    struct list locks;                  /* List of all locks the thread is holding */
+
     /*This is the ticks parameter to check whether the thread has waited enough time or not*/
     int64_t ticks_while_blocked;
 
@@ -139,6 +141,8 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
+void thread_set_priority_given (struct thread *, int);
+
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
@@ -150,6 +154,10 @@ void thread_wake_up(int64_t);
 
 //comparator
 bool thread_element_priority_comparator(
+        const struct list_elem *e1,
+        const struct list_elem *e2, void *aux);
+
+bool thread_head_element_priority_comparator(
         const struct list_elem *e1,
         const struct list_elem *e2, void *aux);
 

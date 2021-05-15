@@ -339,6 +339,21 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
+void
+thread_yield_head (struct thread *t) {
+    enum intr_level old_level;
+
+    ASSERT (!intr_context ());
+
+    old_level = intr_disable ();
+    if (t != idle_thread)
+        list_insert_ordered (&ready_list, &t->elem, thread_head_element_priority_comparator, NULL);
+    /* == My Implementation */
+    t->status = THREAD_READY;
+    schedule ();
+    intr_set_level (old_level);
+}
+
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void
@@ -368,6 +383,20 @@ thread_set_priority (int new_priority)
         if(next_ready_thread && (next_ready_thread->priority > new_priority)){
             thread_yield();
         }
+    }
+}
+
+/* Sets the given thread's priority to NEW_PRIORITY; */
+void
+thread_set_priority_given (struct thread *t, int new_priority){
+    t->priority = new_priority;
+
+    if (t->status == THREAD_READY) {
+        list_remove (&t->elem);
+        list_insert_ordered (&ready_list, &t->elem, thread_element_priority_comparator, NULL);
+    }
+    if (t->status == THREAD_RUNNING && list_entry (list_begin (&ready_list), struct thread, elem)->priority > new_priority) {
+        thread_yield_head (t);
     }
 }
 
@@ -500,6 +529,9 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
+
+  list_init(&t->locks);
+
   intr_set_level (old_level);
 }
 
@@ -669,6 +701,18 @@ thread_element_priority_comparator(const struct list_elem *e1, const struct list
     return (order != NULL && *order == '<') ?
            element_1->priority <= element_2->priority :
            element_1->priority > element_2->priority;
+}
+
+bool
+thread_head_element_priority_comparator(const struct list_elem *e1, const struct list_elem *e2, void * aux){
+    const char * order = (const char *) aux;
+
+    const struct thread * element_1 = list_entry(e1, struct thread, elem);
+    const struct thread * element_2 = list_entry(e2, struct thread, elem);
+
+    ASSERT (element_1 != NULL && element_2 != NULL);
+
+    return element_1->priority >= element_2->priority;
 }
 
 /* Change priority and backup the original priority*/

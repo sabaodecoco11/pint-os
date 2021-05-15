@@ -183,6 +183,7 @@ sema_test_helper (void *sema_)
    acquire and release it.  When these restrictions prove
    onerous, it's a good sign that a semaphore should be used,
    instead of a lock. */
+
 void
 lock_init (struct lock *lock)
 {
@@ -277,10 +278,9 @@ lock_release (struct lock *lock)
   list_remove(&lock->holder_element);
 
   /* IN this case, just restore the priority */
-  if (list_empty(&current_thread->locks))
+  if (list_empty(&current_thread->locks)){
       thread_set_priority(thread_current()->old_priority);
-
-  else{
+  }else{
       le_highest = list_max(&current_thread->locks, lock_priority_comparator, NULL);
       locker = list_entry (le_highest, struct lock, holder_element);
       thread_set_priority (locker->highest_priority);
@@ -385,8 +385,9 @@ cond_broadcast (struct condition *cond, struct lock *lock)
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
 
-  while (!list_empty (&cond->waiters))
+  while (!list_empty (&cond->waiters)){
     cond_signal (cond, lock);
+  }
 }
 
 /* Returns the thread element with greater priority, by default. If less than or greater is needed,

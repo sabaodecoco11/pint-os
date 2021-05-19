@@ -215,17 +215,20 @@ lock_acquire (struct lock *lock)
   /*if the current thread priority is greater than the thread priority that
    * locked the semaphore, give it the same priority*/
   if(thread_holder && (current_thread->priority > thread_holder->priority)){
-      thread_set_priority_given(thread_holder, current_thread->priority);
+      thread_set_priority_given(lock->holder, current_thread->priority);
   }
-  if(lock->highest_priority < current_thread->priority){
+
+  /*the lock priority will get updated*/
+  if(current_thread->priority > lock->highest_priority ){
       lock->highest_priority = current_thread->priority;
   }
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 
-  /* The current thread now holds the lock */
-  list_push_back(&current_thread->locks, &lock->holder_element);
+  /*We could insert the lock element ordered, but we're further using
+   * list_max on lock_release, so there's no problem */
+  list_push_back(&lock->holder->locks, &lock->holder_element);
 }
 
 void
@@ -264,9 +267,9 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock)
 {
-  struct thread * current_thread = thread_current ();
-  struct list_elem *le_highest;
-  struct lock *locker;
+  struct thread * current_thread = thread_current();
+  struct lock * lock_from_highest;
+  struct list_elem *list_elem;
 
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
@@ -276,14 +279,17 @@ lock_release (struct lock *lock)
 
   list_remove(&lock->holder_element);
 
-  /* IN this case, just restore the priority */
-  if (list_empty(&current_thread->locks))
-      thread_set_priority(thread_current()->old_priority);
-
+  /* As there's no other threads waiting for the lock,
+   * just set old priority */
+  if(list_empty(&current_thread->locks)){
+    /*the original thread will have its old priority restored*/
+    thread_set_priority(current_thread->old_priority);
+  }
   else{
-      le_highest = list_max(&current_thread->locks, lock_priority_comparator, NULL);
-      locker = list_entry (le_highest, struct lock, holder_element);
-      thread_set_priority (locker->highest_priority);
+    list_elem = list_max(&current_thread->locks,
+                         lock_priority_comparator, NULL);
+    lock_from_highest = list_entry(list_elem, struct lock, holder_element);
+    thread_set_priority(lock_from_highest->highest_priority);
   }
 }
 
@@ -389,18 +395,13 @@ cond_broadcast (struct condition *cond, struct lock *lock)
     cond_signal (cond, lock);
 }
 
-/* Returns the thread element with greater priority, by default. If less than or greater is needed,
- * provide '<' as aux.
+/* Returns the thread element with greater priority.
  */
-bool lock_priority_comparator(struct list_elem *e1, struct list_elem *e2, void *aux){
-    const char * order = (const char *) aux;
-
-    const struct thread * element_1 = list_entry(e1, struct thread, elem);
-    const struct thread * element_2 = list_entry(e2, struct thread, elem);
+bool lock_priority_comparator(const struct list_elem *e1, const struct list_elem *e2, void *aux){
+    const struct thread * element_1 = list_entry(e1, struct lock, holder_element);
+    const struct thread * element_2 = list_entry(e2, struct lock, holder_element);
 
     ASSERT (element_1 != NULL && element_2 != NULL);
 
-    return (order != NULL && *order == '<') ?
-           element_1->priority <= element_2->priority :
-           element_1->priority > element_2->priority;
+    return element_1->priority < element_2->priority;
 }

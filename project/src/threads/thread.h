@@ -97,6 +97,7 @@ struct thread
     struct list_elem sleepingelem;      /*List of sleeping elements*/
 
     struct list locks;                  /* List of all locks the thread is holding */
+    struct lock * blocking_lock;        /* Lock watcher */
 
     /*This is the ticks parameter to check whether the thread has waited enough time or not*/
     int64_t ticks_while_blocked;
@@ -133,6 +134,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+static void thread_yield_head (struct thread *);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);

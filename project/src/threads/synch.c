@@ -399,10 +399,10 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 /* Returns the thread element with greater priority.
  */
 bool lock_priority_comparator(const struct list_elem *e1, const struct list_elem *e2, void *aux){
-    const struct thread * element_1 = list_entry(e1, struct lock, holder_element);
-    const struct thread * element_2 = list_entry(e2, struct lock, holder_element);
+    const struct lock * element_1 = list_entry(e1, struct lock, holder_element);
+    const struct lock * element_2 = list_entry(e2, struct lock, holder_element);
 
     ASSERT (element_1 != NULL && element_2 != NULL);
 
-    return element_1->priority < element_2->priority;
+    return element_1->highest_priority < element_2->highest_priority;
 }

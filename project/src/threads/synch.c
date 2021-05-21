@@ -114,6 +114,8 @@ void
 sema_up (struct semaphore *sema)
 {
   enum intr_level old_level;
+  struct thread * next_waiter = NULL;
+  struct thread * current_thread = thread_current();
 
   ASSERT (sema != NULL);
 
@@ -121,11 +123,20 @@ sema_up (struct semaphore *sema)
 
   sema->value++;
 
+  list_sort(&sema->waiters, thread_element_priority_comparator, NULL);
+
  /*unblocks the thread with highest priority. If its priority is greater than the thread running,
   * it will take execution.*/
-  if (!list_empty(&sema->waiters))
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+  if (!list_empty(&sema->waiters)){
+      next_waiter = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+
+      /*Now there will be no immediate yield on thread_unblock*/
+      thread_unblock(next_waiter);
+  }
+
+  if (next_waiter != NULL && next_waiter->priority > current_thread->priority){
+      thread_yield_head(thread_current());
+  }
 
   //restore interruption
   intr_set_level (old_level);
@@ -210,13 +221,14 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  struct thread * thread_holder = lock->holder;
+  struct thread * lock_holder = lock->holder;
   struct thread * current_thread = thread_current();
 
   /*if the current thread priority is greater than the thread priority that
    * locked the semaphore, give it the same priority*/
-  if(thread_holder && (current_thread->priority > thread_holder->priority)){
-      thread_set_priority_given(lock->holder, current_thread->priority);
+  if(lock_holder != NULL && (current_thread->priority > lock_holder->priority)){
+      lock_holder->priority_donated = true;
+      thread_set_priority_given(lock_holder, current_thread->priority);
   }
 
   /*the lock priority will get updated*/
@@ -284,6 +296,7 @@ lock_release (struct lock *lock)
   if(list_empty(&current_thread->locks)){
     /*the original thread will have its old priority restored*/
     thread_set_priority(current_thread->old_priority);
+    current_thread->priority_donated = false;
   }
   else{
     list_elem = list_max(&current_thread->locks,

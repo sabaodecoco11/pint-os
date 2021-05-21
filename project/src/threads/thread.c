@@ -341,7 +341,7 @@ thread_yield (void)
 
 /* Yields the CPU.  The given thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
-static void
+void
 thread_yield_head (struct thread *t)
 {
     enum intr_level old_level;
@@ -386,8 +386,17 @@ thread_set_priority (int new_priority)
 void
 thread_set_priority_given (struct thread *t, int new_priority)
 {
-    struct thread * next_runnable_thread;
+    struct thread * next_runnable_thread = NULL;
     t->priority = new_priority;
+
+    if (!t->priority_donated) {
+        t->priority = new_priority;
+        t->old_priority = new_priority;
+    }
+    else {
+        //TODO: check for priority donate lower
+        t->priority = new_priority;
+    }
 
     if (t->status == THREAD_READY) {
         list_remove (&t->elem);
@@ -530,6 +539,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   t->blocking_lock = NULL;
+  t->priority_donated = false;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
